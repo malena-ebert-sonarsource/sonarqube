@@ -26,13 +26,26 @@ env:
 
 auto_cancellation: $CIRRUS_BRANCH != 'master' && $CIRRUS_BRANCH !=~ 'branch.*'
 
+task_native_git_template: &NATIVE_GIT_CLONE_TASK_TEMPLATE
+  clone_script: |
+    if [ -z "$CIRRUS_PR" ]; then
+      git clone --recursive --branch=$CIRRUS_BRANCH ${CIRRUS_CLONE_DEPTH+--depth=$CIRRUS_CLONE_DEPTH} https://x-access-token:${CIRRUS_REPO_CLONE_TOKEN}@github.com/${CIRRUS_REPO_FULL_NAME}.git $CIRRUS_WORKING_DIR
+      git reset --hard $CIRRUS_CHANGE_IN_REPO
+    else
+      git clone --recursive ${CIRRUS_CLONE_DEPTH+--depth=$CIRRUS_CLONE_DEPTH} https://x-access-token:${CIRRUS_REPO_CLONE_TOKEN}@github.com/${CIRRUS_REPO_FULL_NAME}.git $CIRRUS_WORKING_DIR
+      git fetch ${CIRRUS_CLONE_DEPTH+--depth=$CIRRUS_CLONE_DEPTH} origin pull/$CIRRUS_PR/head:pull/$CIRRUS_PR
+      git reset --hard $CIRRUS_CHANGE_IN_REPO
+    fi
+
 task_only_nightly_depending_on_build_template: &TASK_ONLY_NIGHTLY_DEPENDING_ON_BUILD_TEMPLATE
+  <<: *NATIVE_GIT_CLONE_TASK_TEMPLATE
   depends_on: build
   # Comment the following line and commit with message "DO NOT MERGE" in order to run
   # this task on your branch
   only_if: $CIRRUS_BRANCH == "branch-nightly-build"
 
 task_only_default_depending_on_build_template: &TASK_ONLY_DEFAUT_DEPENDING_ON_BUILD_TEMPLATE
+  <<: *NATIVE_GIT_CLONE_TASK_TEMPLATE
   depends_on: build
   only_if: >-
            $CIRRUS_BRANCH !=~ "dogfood/.*" &&
@@ -83,6 +96,7 @@ screenshots_on_failure_template: &REPORTS_JUNIT_SCREENSHOTS_ON_FAILURE_TEMPLATE
     path: "**/build/screenshots/**/*"
 
 build_task:
+  <<: *NATIVE_GIT_CLONE_TASK_TEMPLATE
   only_if: >-
            $CIRRUS_BRANCH !=~ "dogfood/.*" &&
            $CIRRUS_BRANCH != "public_master" &&
@@ -377,6 +391,7 @@ promote_license_change_task:
     - validate
 
 deploy_docs_task:
+  <<: *NATIVE_GIT_CLONE_TASK_TEMPLATE
   depends_on: promote
   only_if: $CIRRUS_BRANCH == 'dogfood-on-next'
   gke_container:
@@ -487,6 +502,7 @@ upgd_oracle12_task:
 # Software Composition Analysis (SCA): check potential vulnerabilities in dependencies.
 # Note that license compliance of dependencies is not checked for now.
 owasp_check_task:
+  <<: *NATIVE_GIT_CLONE_TASK_TEMPLATE
   only_if: >-
            $CIRRUS_CRON == "nightly" ||
            $CIRRUS_CRON == "weekly-latest" ||
